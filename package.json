@@ -1,0 +1,15 @@
+{
+  "name": "dlc-sentry-api-report",
+  "version": "1.0.0",
+  "description": "Fetches and analyzes payment error events from Sentry with intelligent caching to avoid re-fetching data.",
+  "main": "fetch_payment_data.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "pdfkit": "^0.17.2"
+  }
+}

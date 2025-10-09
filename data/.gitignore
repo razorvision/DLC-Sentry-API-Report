@@ -1,0 +1,6 @@
+# Ignore all fetched data files
+*.json
+*.html
+
+# Keep directory structure
+!.gitignore
