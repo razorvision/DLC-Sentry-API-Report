@@ -16,14 +16,14 @@ The system runs automatically via GitHub Actions every **Sunday at 11 PM Pacific
 ### GitHub Actions Workflow
 
 - **Schedule**: Every Sunday at 11 PM PT (7 AM UTC Monday)
-- **Repo**: [DLC-Sentry-API-Report](https://github.com/luciana-razorvision/DLC-Sentry-API-Report)
+- **Repo**: [DLC-Sentry-API-Report](https://github.com/razorvision/DLC-Sentry-API-Report)
 - **Workflow**: `.github/workflows/weekly-report.yml`
 
 ### Manual Trigger
 
 You can run the report manually anytime:
 
-1. Go to [Actions](https://github.com/luciana-razorvision/DLC-Sentry-API-Report/actions)
+1. Go to [Actions](https://github.com/razorvision/DLC-Sentry-API-Report/actions)
 2. Click **"Weekly Payment Report"**
 3. Click **"Run workflow"**
 4. Optionally change the number of days (default: 7)
@@ -74,7 +74,7 @@ You can run the report manually anytime:
 
 ```bash
 # Clone the repo
-git clone https://github.com/luciana-razorvision/DLC-Sentry-API-Report.git
+git clone https://github.com/razorvision/DLC-Sentry-API-Report.git
 cd DLC-Sentry-API-Report
 
 # Install dependencies
@@ -197,7 +197,7 @@ node src/run_weekly_report.js --skip-sentry --skip-gravity-forms
 - Check date range in the report header
 
 ### Workflow failed
-- Check [Actions tab](https://github.com/luciana-razorvision/DLC-Sentry-API-Report/actions) for error logs
+- Check [Actions tab](https://github.com/razorvision/DLC-Sentry-API-Report/actions) for error logs
 - Verify all GitHub Secrets are set correctly
 
 ---
