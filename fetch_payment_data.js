@@ -6,8 +6,12 @@ const fs = require('fs');
 const path = require('path');
 const https = require('https');
 
-// Configuration - use environment variable or fallback
-const SENTRY_TOKEN = process.env.SENTRY_TOKEN || "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";
+// Configuration - requires SENTRY_TOKEN environment variable
+const SENTRY_TOKEN = process.env.SENTRY_TOKEN;
+if (!SENTRY_TOKEN) {
+    console.error('Error: SENTRY_TOKEN environment variable is required');
+    process.exit(1);
+}
 const ORGANIZATION_SLUG = process.env.SENTRY_ORG || "xajeet";
 const PAYMENT_ERROR_ISSUE_ID = "6722248692";
 const PAYMENT_SUCCESS_ISSUE_ID = "6722249177";

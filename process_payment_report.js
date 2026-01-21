@@ -959,7 +959,11 @@ async function generatePDF(htmlFile) {
 // Quick count function - fetches only event counts without storing data
 async function fetchQuickCounts(issueId, issueName, startDate, endDate) {
     const https = require('https');
-    const SENTRY_TOKEN = process.env.SENTRY_TOKEN || "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";
+    const SENTRY_TOKEN = process.env.SENTRY_TOKEN;
+    if (!SENTRY_TOKEN) {
+        console.error('Error: SENTRY_TOKEN environment variable is required');
+        return { totalEvents: 0, uniqueUsers: 0 };
+    }
 
     console.log(`\nFetching ${issueName} counts...`);
 
