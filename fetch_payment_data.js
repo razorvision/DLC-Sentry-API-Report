@@ -1,12 +1,14 @@
 #!/usr/bin/env node
 
+require('dotenv').config();
+
 const fs = require('fs');
 const path = require('path');
 const https = require('https');
 
-// Configuration
-const SENTRY_TOKEN = "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";
-const ORGANIZATION_SLUG = "xajeet";
+// Configuration - use environment variable or fallback
+const SENTRY_TOKEN = process.env.SENTRY_TOKEN || "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";
+const ORGANIZATION_SLUG = process.env.SENTRY_ORG || "xajeet";
 const PAYMENT_ERROR_ISSUE_ID = "6722248692";
 const PAYMENT_SUCCESS_ISSUE_ID = "6722249177";
 

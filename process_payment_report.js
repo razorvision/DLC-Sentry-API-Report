@@ -1,10 +1,12 @@
 #!/usr/bin/env node
 
+require('dotenv').config();
+
 const fs = require('fs');
 const path = require('path');
 
 // Configuration
-const ORGANIZATION_SLUG = "xajeet";
+const ORGANIZATION_SLUG = process.env.SENTRY_ORG || "xajeet";
 const PAYMENT_ERROR_ISSUE_ID = "6722248692";
 const PAYMENT_SUCCESS_ISSUE_ID = "6722249177";
 
@@ -83,6 +85,12 @@ function loadApplicationsData() {
 
     const data = JSON.parse(fs.readFileSync(applicationsFile, 'utf8'));
     console.log(`  ✓ Loaded applications data (${data.dateRangeStart} to ${data.dateRangeEnd})`);
+
+    // Log if manual payment data is present
+    if (data.manualPaymentData) {
+        console.log(`  ✓ Manual payment data found`);
+    }
+
     return data;
 }
 
@@ -150,7 +158,7 @@ function processPaymentSuccess(events) {
 }
 
 // Report generation
-function generateHTMLReport(errorData, successData, applicationsData, startDate, endDate) {
+function generateHTMLReport(errorData, successData, applicationsData, startDate, endDate, skipAnalysis = false) {
     const today = new Date();
     const outputFile = path.join(PROCESSED_DIR, `payment_report_${formatDate(today)}.html`);
 
@@ -171,9 +179,22 @@ function generateHTMLReport(errorData, successData, applicationsData, startDate,
         });
     };
 
-    const timeframeText = `${formatDateLong(start)} to ${formatDateLong(end)}`;
+    // Use applications data dates for summary if available, otherwise use report dates
+    let summaryStart, summaryEnd, daysDiff, timeframeText;
+
+    if (applicationsData) {
+        summaryStart = parseDate(applicationsData.dateRangeStart);
+        summaryEnd = parseDate(applicationsData.dateRangeEnd);
+        daysDiff = Math.ceil((summaryEnd - summaryStart) / (1000 * 60 * 60 * 24)) + 1;
+        timeframeText = `${formatDateLong(summaryStart)} to ${formatDateLong(summaryEnd)}`;
+    } else {
+        summaryStart = start;
+        summaryEnd = end;
+        daysDiff = Math.ceil((end - start) / (1000 * 60 * 60 * 24)) + 1;
+        timeframeText = `${formatDateLong(start)} to ${formatDateLong(end)}`;
+    }
+
     const todayFormatted = today.toLocaleDateString('en-US', { month: '2-digit', day: '2-digit', year: 'numeric' });
-    const daysDiff = Math.ceil((end - start) / (1000 * 60 * 60 * 24)) + 1;
 
     const colors = [
         '#FF6384', '#36A2EB', '#FFCE56', '#4BC0C0', '#9966FF',
@@ -613,6 +634,7 @@ ${Object.entries(applicationsData.otherActions)
         ` : ''}
 
         <!-- Payment Errors Section -->
+        ${!skipAnalysis ? `
         <div class="section">
             <div class="section-title">Payment Errors Analysis</div>
             <div class="section-subtitle">Issue #${PAYMENT_ERROR_ISSUE_ID}</div>
@@ -651,8 +673,10 @@ ${errorData.reasons.map(item => `                    <tr>
 `).join('')}                </tbody>
             </table>
         </div>
+        ` : ''}
 
         <!-- Payment Success Section -->
+        ${!skipAnalysis ? `
         <div class="section payment-success-section">
             <div class="section-title">Payment Success Analysis</div>
             <div class="section-subtitle">Issue #${PAYMENT_SUCCESS_ISSUE_ID}</div>
@@ -691,6 +715,7 @@ ${successData.merchants.map(item => `                    <tr>
 `).join('')}                </tbody>
             </table>
         </div>
+        ` : ''}
 
         <div class="footer">
             <p>Generated on ${new Date().toLocaleString('en-US', { timeZone: 'UTC', timeZoneName: 'short' })}</p>
@@ -705,6 +730,7 @@ ${successData.merchants.map(item => `                    <tr>
             return text.substring(0, maxLength) + '...';
         }
 
+        ${!skipAnalysis ? `
         // Error Pie Chart
         const errorPieCtx = document.getElementById('errorPieChart').getContext('2d');
         const errorReasons = ${JSON.stringify(errorData.chartReasons.map(r => r.reason))};
@@ -852,12 +878,174 @@ ${successData.merchants.map(item => `                    <tr>
                 }
             }
         });
+        ` : ''}
     </script>
 </body>
 </html>`;
 
     fs.writeFileSync(outputFile, html);
     return outputFile;
+}
+
+// PDF generation using Puppeteer (for CI environments)
+async function generatePDFWithPuppeteer(htmlFile) {
+    try {
+        const puppeteer = require('puppeteer');
+        const pdfFile = htmlFile.replace('.html', '.pdf');
+
+        console.log('Launching Puppeteer for PDF generation...');
+        const browser = await puppeteer.launch({
+            headless: 'new',
+            args: ['--no-sandbox', '--disable-setuid-sandbox']
+        });
+
+        const page = await browser.newPage();
+        await page.goto(`file://${htmlFile}`, { waitUntil: 'networkidle0' });
+
+        // Wait for charts to render
+        await page.waitForTimeout(2000);
+
+        await page.pdf({
+            path: pdfFile,
+            format: 'A4',
+            printBackground: true,
+            margin: { top: '10mm', bottom: '10mm', left: '10mm', right: '10mm' }
+        });
+
+        await browser.close();
+        console.log(`✓ PDF saved: ${pdfFile}`);
+        return pdfFile;
+    } catch (error) {
+        console.log(`⚠ Puppeteer PDF generation failed: ${error.message}`);
+        return null;
+    }
+}
+
+// PDF generation using Chrome (for local development)
+async function generatePDFWithChrome(htmlFile) {
+    return new Promise((resolve) => {
+        const { exec } = require('child_process');
+        const pdfFile = htmlFile.replace('.html', '.pdf');
+
+        exec(`"/Applications/Google Chrome.app/Contents/MacOS/Google Chrome" --headless --disable-gpu --print-to-pdf-no-header --print-to-pdf="${pdfFile}" "file://${htmlFile}"`, (error) => {
+            if (error) {
+                console.log(`⚠ Chrome PDF generation failed: ${error.message}`);
+                resolve(null);
+            } else {
+                console.log(`✓ PDF saved: ${pdfFile}`);
+                resolve(pdfFile);
+            }
+        });
+    });
+}
+
+// Smart PDF generation - tries Puppeteer first (CI), falls back to Chrome (local)
+async function generatePDF(htmlFile) {
+    // Check if we're in CI environment
+    const isCI = process.env.CI || process.env.GITHUB_ACTIONS;
+
+    if (isCI) {
+        return await generatePDFWithPuppeteer(htmlFile);
+    }
+
+    // Try Chrome first for local development
+    const chromePdf = await generatePDFWithChrome(htmlFile);
+    if (chromePdf) return chromePdf;
+
+    // Fall back to Puppeteer
+    return await generatePDFWithPuppeteer(htmlFile);
+}
+
+// Quick count function - fetches only event counts without storing data
+async function fetchQuickCounts(issueId, issueName, startDate, endDate) {
+    const https = require('https');
+    const SENTRY_TOKEN = process.env.SENTRY_TOKEN || "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";
+
+    console.log(`\nFetching ${issueName} counts...`);
+
+    const startISO = `${startDate}T00:00:00Z`;
+    const endISO = `${endDate}T23:59:59Z`;
+
+    // Remove full=true to get minimal event data
+    const url = `https://sentry.io/api/0/organizations/${ORGANIZATION_SLUG}/issues/${issueId}/events/?start=${encodeURIComponent(startISO)}&end=${encodeURIComponent(endISO)}`;
+
+    const headers = {
+        'Authorization': `Bearer ${SENTRY_TOKEN}`,
+        'Content-Type': 'application/json'
+    };
+
+    let totalEvents = 0;
+    const uniqueUsers = new Set();
+    let currentUrl = url;
+    let pageNum = 1;
+
+    const fetchPage = (pageUrl) => {
+        return new Promise((resolve, reject) => {
+            https.get(pageUrl, { headers }, (res) => {
+                let data = '';
+
+                res.on('data', (chunk) => {
+                    data += chunk;
+                });
+
+                res.on('end', () => {
+                    try {
+                        const json = JSON.parse(data);
+                        const linkHeader = res.headers.link;
+                        resolve({ data: json, linkHeader });
+                    } catch (e) {
+                        reject(e);
+                    }
+                });
+            }).on('error', reject);
+        });
+    };
+
+    try {
+        while (currentUrl) {
+            const { data, linkHeader } = await fetchPage(currentUrl);
+
+            // Count events and extract unique users
+            for (const event of data) {
+                const eventDate = event.dateCreated || event.dateReceived;
+                if (eventDate) {
+                    const eventDateObj = new Date(eventDate);
+                    const eventDateStr = formatDate(eventDateObj);
+
+                    // Check if event is within our target date range
+                    if (eventDateStr >= startDate && eventDateStr <= endDate) {
+                        totalEvents++;
+
+                        // Extract userId
+                        const user = event.user || {};
+                        const userId = user.id || user.email || user.ip_address || 'anonymous';
+                        uniqueUsers.add(userId);
+                    }
+                }
+            }
+
+            console.log(`  Page ${pageNum}: ${totalEvents} events, ${uniqueUsers.size} unique users so far`);
+
+            // Parse Link header for next page
+            currentUrl = null;
+            if (linkHeader) {
+                const nextMatch = linkHeader.match(/<([^>]+)>;\s*rel="next"/);
+                if (nextMatch) {
+                    currentUrl = nextMatch[1];
+                    pageNum++;
+                }
+            }
+
+            if (data.length === 0) break;
+        }
+
+        console.log(`  ✓ ${issueName}: ${totalEvents} events, ${uniqueUsers.size} unique users`);
+        return { totalEvents, uniqueUsers: uniqueUsers.size };
+
+    } catch (error) {
+        console.error(`  ✗ Error fetching counts: ${error.message}`);
+        return { totalEvents: 0, uniqueUsers: 0 };
+    }
 }
 
 async function main() {
@@ -867,6 +1055,9 @@ async function main() {
     let startDate = null;
     let endDate = null;
     let daysBack = null;
+    let skipAnalysis = false;
+    let quickCount = false;
+    let useManualPaymentData = false;
 
     for (let i = 0; i < args.length; i++) {
         if (args[i] === '--start-date' && args[i + 1]) {
@@ -878,6 +1069,12 @@ async function main() {
         } else if (args[i] === '--days' && args[i + 1]) {
             daysBack = parseInt(args[i + 1], 10);
             i++;
+        } else if (args[i] === '--skip-analysis') {
+            skipAnalysis = true;
+        } else if (args[i] === '--quick-count') {
+            quickCount = true;
+        } else if (args[i] === '--use-manual-payment-data') {
+            useManualPaymentData = true;
         }
     }
 
@@ -901,10 +1098,103 @@ async function main() {
     }
 
     console.log('\n' + '='.repeat(60));
-    console.log('Payment Report Generator');
+    console.log(quickCount ? 'Payment Report Generator - Quick Count Mode' : 'Payment Report Generator');
     console.log('='.repeat(60));
     console.log(`Date Range: ${startDate} to ${endDate}`);
     console.log('='.repeat(60));
+
+    // Quick count mode - fetch only counts without storing data
+    if (quickCount) {
+        const errorCounts = await fetchQuickCounts(
+            PAYMENT_ERROR_ISSUE_ID,
+            'Payment Error',
+            startDate,
+            endDate
+        );
+
+        const successCounts = await fetchQuickCounts(
+            PAYMENT_SUCCESS_ISSUE_ID,
+            'Payment Success',
+            startDate,
+            endDate
+        );
+
+        console.log('\n' + '='.repeat(60));
+        console.log('Summary:');
+        console.log('-'.repeat(60));
+        console.log(`Payment Success: ${successCounts.totalEvents.toLocaleString()} events, ${successCounts.uniqueUsers.toLocaleString()} users`);
+        console.log(`Payment Error:   ${errorCounts.totalEvents.toLocaleString()} events, ${errorCounts.uniqueUsers.toLocaleString()} users`);
+        console.log('='.repeat(60));
+        console.log('\n✓ Quick count completed');
+        return;
+    }
+
+    // Manual payment data mode - use data from applications_data.json
+    if (useManualPaymentData) {
+        console.log('\nUsing manual payment data from applications_data.json...');
+        const applicationsData = loadApplicationsData();
+
+        if (!applicationsData || !applicationsData.manualPaymentData) {
+            console.error('\n✗ Error: No manual payment data found in applications_data.json');
+            console.error('Please add a "manualPaymentData" section with payment counts.');
+            console.error('\nExample structure:');
+            console.error('  "manualPaymentData": {');
+            console.error('    "paymentSuccess": {');
+            console.error('      "totalEvents": 5570,');
+            console.error('      "uniqueUsers": 5328');
+            console.error('    },');
+            console.error('    "paymentError": {');
+            console.error('      "totalEvents": 967,');
+            console.error('      "uniqueUsers": 846');
+            console.error('    }');
+            console.error('  }');
+            return;
+        }
+
+        console.log(`  Payment Success: ${applicationsData.manualPaymentData.paymentSuccess.totalEvents} events, ${applicationsData.manualPaymentData.paymentSuccess.uniqueUsers} users`);
+        console.log(`  Payment Error: ${applicationsData.manualPaymentData.paymentError.totalEvents} events, ${applicationsData.manualPaymentData.paymentError.uniqueUsers} users`);
+
+        // Prepare data structures for report generation
+        const successData = {
+            totalEvents: applicationsData.manualPaymentData.paymentSuccess.totalEvents,
+            totalUsers: applicationsData.manualPaymentData.paymentSuccess.uniqueUsers,
+            merchants: []
+        };
+
+        const errorData = {
+            totalEvents: applicationsData.manualPaymentData.paymentError.totalEvents,
+            totalUsers: applicationsData.manualPaymentData.paymentError.uniqueUsers,
+            chartReasons: [],
+            reasons: []
+        };
+
+        // Generate HTML report (skip detailed analysis)
+        console.log('\nGenerating HTML report...');
+        const htmlFile = generateHTMLReport(errorData, successData, applicationsData, startDate, endDate, true);
+
+        console.log(`\n✓ Report saved: ${htmlFile}`);
+
+        // Generate PDF using Chrome headless
+        console.log('\nGenerating PDF...');
+        const pdfFile = htmlFile.replace('.html', '.pdf');
+
+        const { exec } = require('child_process');
+
+        // Use Chrome headless to generate PDF
+        exec(`"/Applications/Google Chrome.app/Contents/MacOS/Google Chrome" --headless --disable-gpu --print-to-pdf-no-header --print-to-pdf="${pdfFile}" "file://${htmlFile}"`, (error, stdout, stderr) => {
+            if (error) {
+                console.log(`⚠ PDF generation failed: ${error.message}`);
+                console.log('You can manually print to PDF from the browser.');
+            } else {
+                console.log(`✓ PDF saved: ${pdfFile}`);
+            }
+        });
+
+        console.log('Opening HTML in browser...');
+        exec(`open "${htmlFile}"`);
+
+        return;
+    }
 
     // Load Payment Error data
     console.log('\nLoading Payment Error data...');
@@ -1003,7 +1293,7 @@ async function main() {
 
     // Generate HTML report
     console.log('\nGenerating HTML report...');
-    const htmlFile = generateHTMLReport(errorData, successData, applicationsData, startDate, endDate);
+    const htmlFile = generateHTMLReport(errorData, successData, applicationsData, startDate, endDate, skipAnalysis);
 
     console.log(`\n✓ Report saved: ${htmlFile}`);
 
@@ -1033,7 +1323,11 @@ if (require.main === module) {
 
 module.exports = {
     loadChunksInDateRange,
+    loadApplicationsData,
     processPaymentErrors,
     processPaymentSuccess,
-    generateHTMLReport
+    generateHTMLReport,
+    generatePDF,
+    formatDate,
+    parseDate
 };

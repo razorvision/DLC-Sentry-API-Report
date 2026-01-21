@@ -7,6 +7,10 @@
 node_modules/
 dist/
 
+# Environment variables (secrets)
+.env
+.env.local
+
 # Project-specific data files
 data/cache/
 data/processed/*.html

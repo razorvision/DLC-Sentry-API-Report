@@ -1,0 +1,75 @@
+name: Weekly Payment Report
+
+on:
+  # Run every Sunday at 11 PM Pacific Time (7 AM UTC Monday)
+  # Note: During daylight saving time (Mar-Nov), this runs at midnight PT Monday
+  schedule:
+    - cron: '0 7 * * 1'
+
+  # Allow manual trigger for testing
+  workflow_dispatch:
+    inputs:
+      days:
+        description: 'Number of days to include in report'
+        required: false
+        default: '7'
+      skip_email:
+        description: 'Skip sending email (for testing)'
+        required: false
+        default: 'false'
+        type: boolean
+
+jobs:
+  generate-report:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: |
+          npm ci
+          npm install puppeteer dotenv
+
+      - name: Generate and send weekly report
+        env:
+          CI: true
+          SENTRY_TOKEN: ${{ secrets.SENTRY_TOKEN }}
+          SENTRY_ORG: ${{ secrets.SENTRY_ORG }}
+          GRAVITY_FORMS_URL: ${{ secrets.GRAVITY_FORMS_URL }}
+          GRAVITY_FORMS_KEY: ${{ secrets.GRAVITY_FORMS_KEY }}
+          GRAVITY_FORMS_SECRET: ${{ secrets.GRAVITY_FORMS_SECRET }}
+          RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
+          REPORT_RECIPIENTS: ${{ secrets.REPORT_RECIPIENTS }}
+        run: |
+          DAYS="${{ github.event.inputs.days || '7' }}"
+          SKIP_EMAIL="${{ github.event.inputs.skip_email || 'false' }}"
+
+          if [ "$SKIP_EMAIL" = "true" ]; then
+            node src/run_weekly_report.js --days $DAYS --skip-email
+          else
+            node src/run_weekly_report.js --days $DAYS
+          fi
+
+      - name: Upload report artifacts
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: weekly-report-${{ github.run_number }}
+          path: |
+            data/processed/*.html
+            data/processed/*.pdf
+            data/manual/applications_data.json
+          retention-days: 30
+
+      - name: Report Status
+        if: failure()
+        run: |
+          echo "::error::Weekly report generation failed. Check the logs for details."

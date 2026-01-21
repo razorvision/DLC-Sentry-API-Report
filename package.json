@@ -1,15 +1,32 @@
 {
   "name": "dlc-sentry-api-report",
-  "version": "1.0.0",
-  "description": "Fetches and analyzes payment error events from Sentry with intelligent caching to avoid re-fetching data.",
-  "main": "fetch_payment_data.js",
+  "version": "2.0.0",
+  "description": "Automated weekly application and payment report system for Dollar Loan Center. Fetches data from Sentry and Gravity Forms, generates reports, and sends via email.",
+  "main": "src/run_weekly_report.js",
   "scripts": {
+    "report": "node src/run_weekly_report.js",
+    "report:local": "node src/run_weekly_report.js --skip-email",
+    "fetch:sentry": "node fetch_payment_data.js",
+    "fetch:gravity": "node src/fetch_gravity_forms.js",
+    "generate": "node process_payment_report.js",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
-  "keywords": [],
-  "author": "",
+  "keywords": [
+    "sentry",
+    "gravity-forms",
+    "report",
+    "automation",
+    "email"
+  ],
+  "author": "RazorVision",
   "license": "ISC",
   "dependencies": {
-    "pdfkit": "^0.17.2"
+    "dotenv": "^16.4.7",
+    "nodemailer": "^6.9.16",
+    "pdfkit": "^0.17.2",
+    "puppeteer": "^24.2.0"
+  },
+  "engines": {
+    "node": ">=18.0.0"
   }
 }
