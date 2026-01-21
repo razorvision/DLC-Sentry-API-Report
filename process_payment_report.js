@@ -903,7 +903,7 @@ async function generatePDFWithPuppeteer(htmlFile) {
         await page.goto(`file://${htmlFile}`, { waitUntil: 'networkidle0' });
 
         // Wait for charts to render
-        await page.waitForTimeout(2000);
+        await new Promise(resolve => setTimeout(resolve, 2000));
 
         await page.pdf({
             path: pdfFile,

@@ -1,288 +1,207 @@
-# DLC Sentry Payment Analysis & Reporting
+# DLC Weekly Application & Payment Report
 
-Automated reporting system for analyzing payment events (successes and errors) from Sentry, with intelligent chunked caching and PDF generation.
+Automated weekly reporting system that fetches data from Sentry and Gravity Forms, generates PDF reports, and emails them every Sunday at 11 PM Pacific Time.
 
-## 🎯 What This Does
+## Automated Weekly Report (Primary)
 
-- Fetches payment error and payment success events from Sentry
-- Analyzes error reasons and merchant distribution
-- Includes application submission data from manual sources
-- Generates comprehensive HTML and PDF reports with charts
-- Uses intelligent chunked caching (7-day chunks) to avoid re-fetching data
-- Supports flexible date range queries
+The system runs automatically via GitHub Actions every **Sunday at 11 PM Pacific Time**.
 
-## 📊 Latest Results (2025-10-09)
+### What It Does
 
-**Last 30 Days (2025-09-09 to 2025-10-09)**:
-- **Payment Success**: 18,869 events, 13,070 users
-- **Payment Error**: 2,242 events, 1,892 users
-- **Unique Error Reasons**: 33+ (top 12 shown in charts)
-- **Top 3 Errors**:
-  1. Insufficient Funds (17.7%, 343 users)
-  2. Invalid Card Number - grouped (17.4%, 370 users)
-  3. CVV2 Value Invalid (11.4%, 245 users)
+1. **Fetches Gravity Forms data** - Applications, logins, password resets, etc.
+2. **Fetches Sentry payment data** - Payment success and error events
+3. **Generates HTML & PDF report** - With charts and detailed breakdowns
+4. **Emails the report** - Sends PDF to configured recipients via Resend
 
-## 🚀 Quick Start
+### GitHub Actions Workflow
 
-### Recommended: Process Cached Data (Fast)
+- **Schedule**: Every Sunday at 11 PM PT (7 AM UTC Monday)
+- **Repo**: [DLC-Sentry-API-Report](https://github.com/luciana-razorvision/DLC-Sentry-API-Report)
+- **Workflow**: `.github/workflows/weekly-report.yml`
 
-```bash
-# Generate report from cached data (default: last 30 days)
-node process_payment_report.js
+### Manual Trigger
 
-# Custom date range
-node process_payment_report.js --start-date 2025-09-01 --end-date 2025-09-30
+You can run the report manually anytime:
 
-# Last N days
-node process_payment_report.js --days 7
-```
+1. Go to [Actions](https://github.com/luciana-razorvision/DLC-Sentry-API-Report/actions)
+2. Click **"Weekly Payment Report"**
+3. Click **"Run workflow"**
+4. Optionally change the number of days (default: 7)
 
-### Fetch Fresh Data (Slower - only when needed)
+### Required Secrets (GitHub)
 
-```bash
-# Fetch and cache new data
-node fetch_payment_data.js
-```
+| Secret | Description |
+|--------|-------------|
+| `SENTRY_TOKEN` | Sentry API token |
+| `GRAVITY_FORMS_URL` | `https://www.dontbebroke.com` |
+| `GRAVITY_FORMS_KEY` | Gravity Forms consumer key |
+| `GRAVITY_FORMS_SECRET` | Gravity Forms consumer secret |
+| `RESEND_API_KEY` | Resend email API key |
+| `REPORT_RECIPIENTS` | Email addresses (comma-separated) |
 
-## 📁 Data Storage
+---
 
-### Folder Structure
-```
-data/
-├── raw/                          # Cached raw events (chunked by 7-day periods)
-│   ├── payment_error_6722248692/
-│   │   ├── 2025-09-09_to_2025-09-15.json
-│   │   ├── 2025-09-16_to_2025-09-22.json
-│   │   └── ...
-│   └── payment_success_6722249177/
-│       └── 2025-09-09_to_2025-10-08.json
-├── manual/                       # Manual data entry (applications, etc.)
-│   └── applications_data.json
-└── processed/                    # Generated reports
-    ├── payment_report_2025-10-09.html
-    └── payment_report_2025-10-09.pdf
-```
+## Report Contents
 
-### Caching Strategy
+### Summary Section
+- Payment Success events & unique users
+- Payment Error events & unique users
 
-**Chunked Caching**:
-- Data stored in 7-day chunks
-- Only fetches missing date ranges
-- Efficient for long-term historical analysis
-- Automatic deduplication of events
-- Used by: `fetch_payment_data.js` and `process_payment_report.js`
-
-### What Gets Generated
-
-**HTML Report** (`data/processed/payment_report_*.html`):
-- Summary cards for payment success/error totals
-- Application submission statistics
-- Interactive pie charts (top 12 error reasons + "Others")
-- Interactive bar charts
-- Detailed tables with all error reasons
-- Print-optimized CSS for PDF generation
-
-**PDF Report** (`data/processed/payment_report_*.pdf`):
-- Generated automatically via Chrome headless
-- Professional layout with page breaks
-- All charts and tables included
-
-## 📝 Files Overview
-
-| File | Purpose |
-|------|---------|
-| `process_payment_report.js` | ✅ **Main script** - Generate reports from cached chunks |
-| `fetch_payment_data.js` | Fetch and cache data in 7-day chunks |
-| `migrate_cache_to_chunks.js` | Utility to convert old cache format to chunked format |
-| `data/manual/applications_data.json` | Manual application data entry |
-
-## 🔧 Configuration
-
-### Payment Issues (in scripts)
-
-```javascript
-const PAYMENT_ERROR_ISSUE_ID = "6722248692";
-const PAYMENT_SUCCESS_ISSUE_ID = "6722249177";
-const ORGANIZATION_SLUG = "xajeet";
-const SENTRY_TOKEN = "your-token-here";
-```
-
-### Manual Data
-
-Edit `data/manual/applications_data.json` for application statistics:
-```json
-{
-  "dateRangeStart": "2025-10-02",
-  "dateRangeEnd": "2025-10-09",
-  "applications": {
-    "total": 1234,
-    "fromStoreKiosks": 567,
-    "byState": { "CA": 500, "TX": 300, ... }
-  }
-}
-```
-
-## 📊 Report Features
-
-### Payment Errors Section
-- **Pie Chart**: Top 12 error reasons + "Others" category
-- **Bar Chart**: Same as pie chart for easy comparison
-- **Detailed Table**: Complete list of all error reasons with:
-  - Event counts
-  - Unique user counts
-  - Percentage breakdown
-
-### Payment Success Section
-- **Pie Chart**: Merchant distribution
-- **Bar Chart**: Success by merchant
-- **Table**: Merchant breakdown with stats
-
-### Applications Section (if manual data available)
+### Applications Section (from Gravity Forms)
 - Total applications
-- Store kiosk vs. other sources
 - First-time vs. returning customers
-- Breakdown by state
-- "Please Wait" submission tracking
-- Bank verification and document upload stats
+- Store kiosk applications
+- Applications by state (NV, ID, WI, UT, MO, DE, OK)
+- "Please Wait" submissions (complete vs. error)
+- Bank verifications
+- Document uploads
+- Login/password activity
 
-## 🎨 Chart Customization
+### Payment Errors Analysis (from Sentry)
+- Pie chart: Top 12 error reasons + "Others"
+- Bar chart: Error frequency
+- Detailed table with all error reasons, counts, and percentages
 
-### Top 12 + Others Feature
-Error reasons are limited to top 12 in pie/bar charts to improve readability:
-- Top 12 reasons shown individually
-- Remaining reasons combined into "Others"
-- Complete breakdown still shown in detailed table
-- Configurable in code (currently hardcoded to 12)
+### Payment Success Analysis (from Sentry)
+- Merchant distribution
+- Success by merchant breakdown
 
-### Error Grouping
-- All errors ending with "is not a valid card number" are grouped together
-- Displayed as "Invalid card number (grouped)"
-- Helps reduce noise from similar errors
+---
 
-## 🔑 Token Requirements
+## Local Development (Secondary)
 
-Your Sentry API token needs these scopes:
-- `event:read` (required)
-- `org:read` (recommended)
-- `project:read` (recommended)
-
-Create token at: https://xajeet.sentry.io/settings/auth-tokens/
-
-## ⚙️ PDF Generation
-
-PDF is automatically generated using Chrome headless:
-```bash
-"/Applications/Google Chrome.app/Contents/MacOS/Google Chrome" \
-  --headless \
-  --disable-gpu \
-  --print-to-pdf-no-header \
-  --print-to-pdf="output.pdf" \
-  "file://path-to-html"
-```
-
-Requires Google Chrome installed at the default macOS location.
-
-## 📋 Command Line Examples
+### Setup
 
 ```bash
-# Default: last 30 days
-node process_payment_report.js
+# Clone the repo
+git clone https://github.com/luciana-razorvision/DLC-Sentry-API-Report.git
+cd DLC-Sentry-API-Report
 
-# Last 7 days
-node process_payment_report.js --days 7
+# Install dependencies
+npm install
 
-# Specific date range
-node process_payment_report.js --start-date 2025-09-01 --end-date 2025-09-30
+# Copy environment template
+cp .env.example .env
 
-# Fetch fresh data for current month
-node fetch_payment_data.js
-
-# Migrate old cache format to chunks
-node migrate_cache_to_chunks.js
+# Edit .env with your credentials
 ```
 
-## 🔄 Workflow
+### Environment Variables (.env)
 
-### Regular Usage (Weekly Reports)
-1. `node process_payment_report.js --days 7` - Generates report from cache
-2. Report automatically opens in browser
-3. PDF automatically generated
+```env
+# Sentry API
+SENTRY_TOKEN=your_sentry_token
+SENTRY_ORG=xajeet
 
-### First Time or Data Refresh
-1. `node fetch_payment_data.js` - Fetch and cache data
-2. `node process_payment_report.js` - Generate report
-3. Update `data/manual/applications_data.json` if needed
-4. Re-run step 2 to include manual data
+# Gravity Forms API
+GRAVITY_FORMS_URL=https://www.dontbebroke.com
+GRAVITY_FORMS_KEY=your_consumer_key
+GRAVITY_FORMS_SECRET=your_consumer_secret
 
-### Migrating from Old Format
-1. `node migrate_cache_to_chunks.js` - Converts old cache to chunks
-2. Continue with regular usage workflow
+# Email (Resend)
+RESEND_API_KEY=re_xxxxxxxxxx
+REPORT_RECIPIENTS=your@email.com
+```
 
-## ❓ FAQ
+### Run Locally
 
-**Q: Why chunked caching?**
-A: Fetching 30+ days of data in one API call is slow and can timeout. 7-day chunks are faster, more reliable, and allow incremental updates.
+```bash
+# Full report with email
+npm run report
 
-**Q: How do I refresh data?**
-A: Run `node fetch_payment_data.js`. It will only fetch missing chunks, keeping existing cached data.
+# Report without email (local testing)
+npm run report:local
 
-**Q: Can I analyze different date ranges?**
-A: Yes! Use `--start-date` and `--end-date` flags with `process_payment_report.js`.
+# Fetch only Gravity Forms data
+npm run fetch:gravity
 
-**Q: Why are only 12 error reasons shown in the chart?**
-A: Too many slices make pie charts unreadable. The detailed table shows all reasons, and "Others" combines the rest in the chart.
+# Fetch only Sentry data
+npm run fetch:sentry
 
-**Q: What if Chrome is not installed?**
-A: PDF generation will fail, but HTML report will still be created. You can manually print to PDF from your browser.
+# Generate report from cached data
+npm run generate
+```
 
-**Q: How do I add application data?**
-A: Edit `data/manual/applications_data.json` with your weekly application statistics.
+### Command Line Options
 
-**Q: Can I use this for other Sentry issues?**
-A: Yes! Change the `ISSUE_ID` constants in the scripts to analyze any Sentry issue.
+```bash
+# Last 7 days (default)
+node src/run_weekly_report.js
 
-## 🔍 Troubleshooting
+# Custom number of days
+node src/run_weekly_report.js --days 14
 
-**PDF not generating**: Ensure Chrome is installed at `/Applications/Google Chrome.app/`
+# Skip email
+node src/run_weekly_report.js --skip-email
 
-**Data looks incomplete**: Run `node fetch_payment_data.js` to fetch missing chunks
+# Skip fetching (use cached data)
+node src/run_weekly_report.js --skip-sentry --skip-gravity-forms
+```
 
-**Charts not showing**: Ensure Chart.js CDN is accessible (requires internet)
+---
 
-**Dates out of range**: Ensure your date range has cached data, or fetch new data first
-
-## 📄 Report Output Example
+## Project Structure
 
 ```
-============================================================
-Payment Report Generator
-============================================================
-Date Range: 2025-09-09 to 2025-10-09
-============================================================
-
-Loading Payment Error data...
-  Loaded chunk: 2025-09-09 to 2025-09-15 (544 events)
-  Loaded chunk: 2025-09-16 to 2025-09-22 (509 events)
-  ...
-✓ Loaded 2242 Payment Error events
-
-Loading Payment Success data...
-  ...
-✓ Loaded 18869 Payment Success events
-
-============================================================
-Summary:
-------------------------------------------------------------
-Payment Success: 18869 events, 13070 users
-Payment Error:   2242 events, 1892 users
-============================================================
-
-✓ Report saved: .../payment_report_2025-10-09.html
-✓ PDF saved: .../payment_report_2025-10-09.pdf
+├── .github/workflows/
+│   └── weekly-report.yml     # GitHub Actions workflow
+├── src/
+│   ├── run_weekly_report.js  # Main orchestrator
+│   ├── fetch_gravity_forms.js # Gravity Forms API integration
+│   └── send_email.js         # Resend email integration
+├── data/
+│   ├── raw/                  # Cached Sentry events (7-day chunks)
+│   ├── manual/               # Gravity Forms data cache
+│   └── processed/            # Generated HTML & PDF reports
+├── fetch_payment_data.js     # Sentry data fetcher
+├── process_payment_report.js # Report generator
+├── .env.example              # Environment template
+└── package.json
 ```
+
+## Gravity Forms Field Mappings
+
+| Stat | Form | Field |
+|------|------|-------|
+| Total Applications | Form 4 | Entry count |
+| From Store Kiosks | Form 4 | Field 120 = "Store Kiosk" |
+| First Time Applications | Form 4 | Field 151 = "FirstApplication" |
+| Returning Customers | Form 4 | Field 151 = "NewLoan" |
+| By State | Form 4 | Field 27 (NV, ID, etc.) |
+| Please Wait - Total | Form 14 | Entry count |
+| Please Wait - Complete | Form 14 | workflow_final_status = "complete" |
+| Please Wait - Error | Form 14 | workflow_final_status = "error_server" |
+| Bank Verification | Form 10 | Entry count |
+| Documentation Upload | Form 11 | Entry count |
+| Upload Document (Auth) | Form 12 | Entry count |
+| Change Password | Form 8 | Entry count |
+| Login to Member Area | Form 6 | Entry count |
+| Forgot Password | Form 7 | Entry count |
+| Reset Password | Form 9 | Entry count |
+
+---
+
+## Troubleshooting
+
+### Email not received
+- Check Resend dashboard for delivery status
+- Verify `REPORT_RECIPIENTS` is set correctly
+- On free tier, can only send to the email you signed up with
+
+### PDF not generated in CI
+- Check GitHub Actions logs for Puppeteer errors
+- Ensure the workflow has the `CI: true` environment variable
+
+### Data looks incorrect
+- Run manually with `--skip-sentry --skip-gravity-forms` to use cached data
+- Check date range in the report header
+
+### Workflow failed
+- Check [Actions tab](https://github.com/luciana-razorvision/DLC-Sentry-API-Report/actions) for error logs
+- Verify all GitHub Secrets are set correctly
 
 ---
 
 **Project**: [DLC-004] Production Maintenance
 **Organization**: RazorVision
-**Last Updated**: 2025-10-09
+**Last Updated**: 2026-01-21
