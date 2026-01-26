@@ -129,6 +129,80 @@ function processPaymentErrors(events) {
     return results;
 }
 
+function processMidRulesErrors(events) {
+    // Filter events with "mid rules could not select a mid" error
+    const midRulesEvents = events.filter(e =>
+        e.paymentErrorReason &&
+        e.paymentErrorReason.toLowerCase().includes('mid rules could not select a mid')
+    );
+
+    if (midRulesEvents.length === 0) {
+        return null;
+    }
+
+    // Group by storeState
+    const byState = {};
+    // Group by storeId
+    const byStore = {};
+    // Group by merchant_id
+    const byMerchant = {};
+    // Collect all customer details
+    const customerDetails = [];
+
+    for (const event of midRulesEvents) {
+        const state = event.storeState || 'Unknown';
+        const storeId = event.storeId || 'Unknown';
+        const merchantId = event.merchant_id || 'Unknown';
+
+        // Count by state
+        if (!byState[state]) {
+            byState[state] = { count: 0, users: new Set() };
+        }
+        byState[state].count++;
+        byState[state].users.add(event.userId);
+
+        // Count by store
+        if (!byStore[storeId]) {
+            byStore[storeId] = { count: 0, users: new Set(), state: state };
+        }
+        byStore[storeId].count++;
+        byStore[storeId].users.add(event.userId);
+
+        // Count by merchant
+        if (!byMerchant[merchantId]) {
+            byMerchant[merchantId] = { count: 0, users: new Set() };
+        }
+        byMerchant[merchantId].count++;
+        byMerchant[merchantId].users.add(event.userId);
+
+        // Collect customer details
+        customerDetails.push({
+            customerId: event.customerId || 'Unknown',
+            storeState: state,
+            storeId: storeId,
+            merchantId: merchantId,
+            timestamp: event.timestamp
+        });
+    }
+
+    return {
+        totalEvents: midRulesEvents.length,
+        totalUsers: new Set(midRulesEvents.map(e => e.userId)).size,
+        byState: Object.entries(byState)
+            .map(([state, data]) => ({ state, count: data.count, uniqueUsers: data.users.size }))
+            .sort((a, b) => b.count - a.count),
+        byStore: Object.entries(byStore)
+            .map(([storeId, data]) => ({ storeId, state: data.state, count: data.count, uniqueUsers: data.users.size }))
+            .sort((a, b) => b.count - a.count),
+        byMerchant: Object.entries(byMerchant)
+            .map(([merchantId, data]) => ({ merchantId, count: data.count, uniqueUsers: data.users.size }))
+            .sort((a, b) => b.count - a.count),
+        recentEvents: customerDetails
+            .sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp))
+            .slice(0, 20) // Show last 20 events
+    };
+}
+
 function processPaymentSuccess(events) {
     const merchantData = {};
 
@@ -158,7 +232,7 @@ function processPaymentSuccess(events) {
 }
 
 // Report generation
-function generateHTMLReport(errorData, successData, applicationsData, startDate, endDate, skipAnalysis = false) {
+function generateHTMLReport(errorData, successData, applicationsData, startDate, endDate, skipAnalysis = false, midRulesData = null) {
     const today = new Date();
     const outputFile = path.join(PROCESSED_DIR, `payment_report_${formatDate(today)}.html`);
 
@@ -672,6 +746,108 @@ ${errorData.reasons.map(item => `                    <tr>
                     </tr>
 `).join('')}                </tbody>
             </table>
+        </div>
+        ` : ''}
+
+        <!-- MID Rules Error Details Section -->
+        ${midRulesData ? `
+        <div class="section">
+            <div class="section-title">MID Rules Error Details</div>
+            <div class="section-subtitle">"mid rules could not select a mid" - ${midRulesData.totalEvents} events from ${midRulesData.totalUsers} unique users</div>
+
+            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 20px; margin-bottom: 30px;">
+                ${midRulesData.byState.length > 0 ? `
+                <div>
+                    <h3 style="margin-bottom: 15px;">By State</h3>
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>State</th>
+                                <th>Events</th>
+                                <th>Users</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+${midRulesData.byState.map(item => `                            <tr>
+                                <td><strong>${item.state}</strong></td>
+                                <td>${item.count}</td>
+                                <td>${item.uniqueUsers}</td>
+                            </tr>`).join('\n')}
+                        </tbody>
+                    </table>
+                </div>
+                ` : ''}
+
+                ${midRulesData.byStore.some(item => item.storeId !== 'Unknown') ? `
+                <div>
+                    <h3 style="margin-bottom: 15px;">By Store ID</h3>
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Store ID</th>
+                                <th>State</th>
+                                <th>Events</th>
+                                <th>Users</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+${midRulesData.byStore.filter(item => item.storeId !== 'Unknown').map(item => `                            <tr>
+                                <td><strong>${item.storeId}</strong></td>
+                                <td>${item.state}</td>
+                                <td>${item.count}</td>
+                                <td>${item.uniqueUsers}</td>
+                            </tr>`).join('\n')}
+                        </tbody>
+                    </table>
+                </div>
+                ` : ''}
+
+                ${midRulesData.byMerchant.length > 0 && midRulesData.byMerchant[0].merchantId !== 'Unknown' ? `
+                <div>
+                    <h3 style="margin-bottom: 15px;">By Merchant</h3>
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Merchant ID</th>
+                                <th>Events</th>
+                                <th>Users</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+${midRulesData.byMerchant.filter(item => item.merchantId !== 'Unknown').map(item => `                            <tr>
+                                <td><strong>${item.merchantId}</strong></td>
+                                <td>${item.count}</td>
+                                <td>${item.uniqueUsers}</td>
+                            </tr>`).join('\n')}
+                        </tbody>
+                    </table>
+                </div>
+                ` : ''}
+            </div>
+
+            ${midRulesData.recentEvents.length > 0 ? `
+            <h3 style="margin-top: 30px; margin-bottom: 15px;">Recent Events (Last ${midRulesData.recentEvents.length})</h3>
+            <table>
+                <thead>
+                    <tr>
+                        <th>Timestamp</th>
+                        <th>Customer ID</th>
+                        <th>State</th>
+                        <th>Store ID</th>
+                        <th>Merchant ID</th>
+                    </tr>
+                </thead>
+                <tbody>
+${midRulesData.recentEvents.map(event => `                    <tr>
+                        <td>${new Date(event.timestamp).toLocaleString('en-US', { timeZone: 'UTC' })}</td>
+                        <td>${event.customerId}</td>
+                        <td>${event.storeState}</td>
+                        <td>${event.storeId}</td>
+                        <td>${event.merchantId}</td>
+                    </tr>`).join('\n')}
+                </tbody>
+            </table>
+            ` : ''}
         </div>
         ` : ''}
 
@@ -1288,16 +1464,28 @@ async function main() {
         }))
     };
 
+    // Process MID Rules error details
+    console.log('\nProcessing MID Rules error details...');
+    const midRulesData = processMidRulesErrors(errorEvents);
+    if (midRulesData) {
+        console.log(`✓ Found ${midRulesData.totalEvents} "mid rules could not select a mid" events`);
+    } else {
+        console.log('  No "mid rules could not select a mid" errors found');
+    }
+
     console.log('\n' + '='.repeat(60));
     console.log('Summary:');
     console.log('-'.repeat(60));
     console.log(`Payment Success: ${successData.totalEvents} events, ${successData.totalUsers} users`);
     console.log(`Payment Error:   ${errorData.totalEvents} events, ${errorData.totalUsers} users`);
+    if (midRulesData) {
+        console.log(`MID Rules Errors: ${midRulesData.totalEvents} events, ${midRulesData.totalUsers} users`);
+    }
     console.log('='.repeat(60));
 
     // Generate HTML report
     console.log('\nGenerating HTML report...');
-    const htmlFile = generateHTMLReport(errorData, successData, applicationsData, startDate, endDate, skipAnalysis);
+    const htmlFile = generateHTMLReport(errorData, successData, applicationsData, startDate, endDate, skipAnalysis, midRulesData);
 
     console.log(`\n✓ Report saved: ${htmlFile}`);
 
@@ -1330,6 +1518,7 @@ module.exports = {
     loadApplicationsData,
     processPaymentErrors,
     processPaymentSuccess,
+    processMidRulesErrors,
     generateHTMLReport,
     generatePDF,
     formatDate,

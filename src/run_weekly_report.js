@@ -38,6 +38,7 @@ const {
     loadApplicationsData,
     processPaymentErrors,
     processPaymentSuccess,
+    processMidRulesErrors,
     generateHTMLReport,
     generatePDF,
     formatDate
@@ -216,9 +217,15 @@ async function runWeeklyReport(options = {}) {
     // Load applications data (may have been updated by Gravity Forms fetch)
     const applicationsData = loadApplicationsData();
 
+    // Process MID Rules error details
+    const midRulesData = processMidRulesErrors(errorEvents);
+
     console.log('\n📊 Summary:');
     console.log(`  Payment Success: ${totalSuccessEvents.toLocaleString()} events, ${totalSuccessUsers.toLocaleString()} users`);
     console.log(`  Payment Error:   ${totalErrorEvents.toLocaleString()} events, ${totalErrorUsers.toLocaleString()} users`);
+    if (midRulesData) {
+        console.log(`  MID Rules Errors: ${midRulesData.totalEvents.toLocaleString()} events, ${midRulesData.totalUsers.toLocaleString()} users`);
+    }
     if (applicationsData) {
         console.log(`  Applications:    ${applicationsData.applications?.total?.toLocaleString() || 'N/A'} total`);
     }
@@ -227,7 +234,7 @@ async function runWeeklyReport(options = {}) {
     console.log('\n📄 STEP 4: Generating Reports');
     console.log('-'.repeat(50));
 
-    const htmlFile = generateHTMLReport(errorData, successData, applicationsData, startDateStr, endDateStr);
+    const htmlFile = generateHTMLReport(errorData, successData, applicationsData, startDateStr, endDateStr, false, midRulesData);
     console.log(`✓ HTML report: ${htmlFile}`);
 
     const pdfFile = await generatePDF(htmlFile);

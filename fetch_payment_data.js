@@ -166,7 +166,14 @@ function extractMinimalEventData(event, issueType) {
         for (const tag of tags) {
             if (tag.key === 'paymentErrorReason') {
                 minimalEvent.paymentErrorReason = tag.value || 'Unknown';
-                break;
+            } else if (tag.key === 'merchant_id') {
+                minimalEvent.merchant_id = tag.value;
+            } else if (tag.key === 'customerId') {
+                minimalEvent.customerId = tag.value;
+            } else if (tag.key === 'storeState') {
+                minimalEvent.storeState = tag.value;
+            } else if (tag.key === 'storeId') {
+                minimalEvent.storeId = tag.value;
             }
         }
     } else if (issueType === 'payment_success') {
